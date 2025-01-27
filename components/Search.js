@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
-import Link from 'next/link';
+import { Search as SearchIcon } from 'lucide-react';
 
 export default function Search() {
   const [query, setQuery] = useState('');
@@ -10,7 +10,6 @@ export default function Search() {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    console.log('Search initiated for:', query); // Debugging
     if (!query.trim()) {
       setResults([]);
       return;
@@ -20,40 +19,62 @@ export default function Search() {
     setError(null);
 
     try {
-      // Fetch from Dog API
+      // Fetch breed data from The Dog API
       const dogApiResponse = await axios.get(
-        `${process.env.NEXT_PUBLIC_DOG_API_URL}/breeds/search?q=${query}`,
+        `https://api.thedogapi.com/v1/breeds/search?q=${encodeURIComponent(query)}`,
         {
           headers: {
-            'x-api-key': process.env.NEXT_PUBLIC_DOG_API_KEY
+            'x-api-key': 'live_QUc1jYKWDDpRFH2HdTNfVZMVLtdWN5R7W5X5K3WdLOERYoUbiuK2cPnKxhTUvdeP'
           }
         }
       );
 
-      console.log('Dog API response:', dogApiResponse.data); // Debugging
+      // Fetch images from Pixabay for each breed
+      const breeds = await Promise.all(
+        dogApiResponse.data.map(async (breed) => {
+          try {
+            const pixabayResponse = await axios.get(
+              `https://pixabay.com/api/?key=48378802-72caf28c83fbe3c5978fec2e0&q=${encodeURIComponent(breed.name + ' dog')}&image_type=photo&per_page=3`
+            );
 
-      // Fetch images from Pixabay
-      const pixabayResponse = await axios.get(
-        `https://pixabay.com/api/?key=${process.env.NEXT_PUBLIC_PIXABAY_API_KEY}&q=${encodeURIComponent(query + ' dog')}&image_type=photo`
+            // Get a random image from the first 3 results, or use fallback
+            const images = pixabayResponse.data.hits;
+            const randomImage = images.length > 0 
+              ? images[Math.floor(Math.random() * Math.min(images.length, 3))]?.largeImageURL
+              : 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=500&q=80';
+
+            return {
+              id: breed.id,
+              name: breed.name,
+              image: randomImage,
+              category: breed.breed_group || 'Unknown',
+              characteristics: {
+                size: `${breed.height?.metric || 'Unknown'} cm`,
+                weight: `${breed.weight?.metric || 'Unknown'} kg`,
+                lifeSpan: breed.life_span || 'Unknown',
+                temperament: breed.temperament || 'Unknown'
+              }
+            };
+          } catch (error) {
+            console.error('Pixabay API error:', error);
+            // Return breed with fallback image if Pixabay fails
+            return {
+              id: breed.id,
+              name: breed.name,
+              image: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=500&q=80',
+              category: breed.breed_group || 'Unknown',
+              characteristics: {
+                size: `${breed.height?.metric || 'Unknown'} cm`,
+                weight: `${breed.weight?.metric || 'Unknown'} kg`,
+                lifeSpan: breed.life_span || 'Unknown',
+                temperament: breed.temperament || 'Unknown'
+              }
+            };
+          }
+        })
       );
 
-      console.log('Pixabay response:', pixabayResponse.data); // Debugging
-
-      // Combine results
-      const combinedResults = dogApiResponse.data.map(breed => ({
-        id: breed.id,
-        name: breed.name,
-        image: pixabayResponse.data.hits[0]?.webformatURL || '/images/fallback.jpg',
-        category: breed.breed_group || 'Unknown',
-        characteristics: {
-          size: breed.height?.metric || 'Unknown',
-          energy: breed.energy_level || 'Unknown',
-          familyFriendly: breed.bred_for || 'Unknown',
-          trainability: breed.temperament || 'Unknown'
-        }
-      }));
-
-      setResults(combinedResults);
+      setResults(breeds);
     } catch (error) {
       console.error('Search error:', error);
       setError('Failed to fetch results. Please try again.');
@@ -63,98 +84,76 @@ export default function Search() {
   };
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
-      <form 
-        onSubmit={handleSearch} 
-        style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}
-      >
-        <input
-          type="text"
-          placeholder="Search breeds..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          style={{
-            flex: 1,
-            padding: '10px 15px',
-            border: '2px solid #e2e8f0',
-            borderRadius: '8px',
-            fontSize: '16px'
-          }}
-        />
+    <div className="max-w-3xl mx-auto p-4">
+      <form onSubmit={handleSearch} className="flex gap-2 mb-6">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            placeholder="Search dog breeds..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-full px-4 py-2 pl-10 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500"
+          />
+          <SearchIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+        </div>
         <button 
           type="submit" 
           disabled={isLoading}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: '#4299e1',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '16px'
-          }}
+          className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-blue-300 transition-colors"
         >
           {isLoading ? 'Searching...' : 'Search'}
         </button>
       </form>
 
       {error && (
-        <div style={{ color: 'red', marginBottom: '20px', textAlign: 'center' }}>
+        <div className="text-red-500 text-center mb-4 p-3 bg-red-50 rounded-lg">
           {error}
         </div>
       )}
 
-      <div>
+      <div className="space-y-4">
         {results.length > 0 ? (
           results.map((breed) => (
-            <Link 
-              key={breed.id} 
-              href={`/breeds/${breed.id}`}
-              style={{
-                display: 'block',
-                padding: '20px',
-                marginBottom: '15px',
-                background: 'white',
-                borderRadius: '8px',
-                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
-                textDecoration: 'none',
-                color: 'inherit'
-              }}
+            <div 
+              key={breed.id}
+              className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
             >
-              <img 
-                src={breed.image} 
-                alt={breed.name} 
-                style={{
-                  width: '100%',
-                  height: '200px',
-                  objectFit: 'cover',
-                  borderRadius: '8px',
-                  marginBottom: '15px'
-                }}
-              />
-              <h3 style={{ margin: '0 0 10px 0', color: '#2d3748' }}>{breed.name}</h3>
-              <p style={{ fontSize: '0.9em', color: '#718096', margin: '5px 0' }}>
-                Category: {breed.category}
-              </p>
-              <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
-                <span style={{ padding: '5px 10px', background: '#edf2f7', borderRadius: '4px', fontSize: '0.85em' }}>
-                  Size: {breed.characteristics.size}
-                </span>
-                <span style={{ padding: '5px 10px', background: '#edf2f7', borderRadius: '4px', fontSize: '0.85em' }}>
-                  Energy: {breed.characteristics.energy}
-                </span>
-                <span style={{ padding: '5px 10px', background: '#edf2f7', borderRadius: '4px', fontSize: '0.85em' }}>
-                  Family Friendly: {breed.characteristics.familyFriendly}
-                </span>
-                <span style={{ padding: '5px 10px', background: '#edf2f7', borderRadius: '4px', fontSize: '0.85em' }}>
-                  Trainability: {breed.characteristics.trainability}
-                </span>
+              <div className="md:flex">
+                <div className="md:flex-shrink-0">
+                  <img 
+                    src={breed.image}
+                    alt={breed.name}
+                    className="h-48 w-full md:w-48 object-cover"
+                  />
+                </div>
+                <div className="p-4">
+                  <h3 className="text-xl font-semibold text-gray-800">{breed.name}</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Category: {breed.category}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="px-2 py-1 bg-gray-100 rounded-full text-sm">
+                      Size: {breed.characteristics.size}
+                    </span>
+                    <span className="px-2 py-1 bg-gray-100 rounded-full text-sm">
+                      Weight: {breed.characteristics.weight}
+                    </span>
+                    <span className="px-2 py-1 bg-gray-100 rounded-full text-sm">
+                      Life Span: {breed.characteristics.lifeSpan}
+                    </span>
+                  </div>
+                  {breed.characteristics.temperament && (
+                    <p className="mt-3 text-sm text-gray-600">
+                      <strong>Temperament:</strong> {breed.characteristics.temperament}
+                    </p>
+                  )}
+                </div>
               </div>
-            </Link>
+            </div>
           ))
         ) : query && !isLoading ? (
-          <p style={{ textAlign: 'center', color: '#718096', padding: '20px' }}>
-            No breeds match your search.
+          <p className="text-center text-gray-600 py-8">
+            No breeds found matching your search.
           </p>
         ) : null}
       </div>
